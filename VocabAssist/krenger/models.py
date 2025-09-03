@@ -19,7 +19,6 @@ class WordCard(models.Model):
 
     def __str__(self):
         return self.name
-
 class Person(models.Model):
     name = models.CharField(max_length=50)    
     words = models.ManyToManyField(WordCard)
