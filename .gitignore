@@ -1,9 +1,9 @@
-DictionAssist/jstoolchain/node_modules
-DictionAssist/polls/__pycache__
+VocabAssist/jstoolchain/node_modules
+VocabAssist/polls/__pycache__
 **/.env
 **/venv
 **/__pycache__
-DictionAssist/krenger/down/*
+VocabAssist/krenger/down/*
 **/.DS_Store
 db.sqlite3
 **/audio_files/**

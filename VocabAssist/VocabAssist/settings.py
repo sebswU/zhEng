@@ -53,7 +53,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "DictionAssist.urls"
+ROOT_URLCONF = "VocabAssist.urls"
 MEDIA_ROOT = "s3://webapp2012/audio_files/"
 
 TEMPLATES = [
@@ -72,7 +72,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "DictionAssist.wsgi.application"
+WSGI_APPLICATION = "VocabAssist.wsgi.application"
 
 
 # Database
