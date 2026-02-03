@@ -1,4 +1,4 @@
-# zhEng
+# zhEng (郑）
 App that demonstrates audio speech recognition and gives feedback on developing language learners' lexical dictionary
 
 # Setup
