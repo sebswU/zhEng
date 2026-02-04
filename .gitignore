@@ -1,7 +1,9 @@
 DictionAssist/jstoolchain/node_modules
 DictionAssist/polls/__pycache__
 **/.env
+**/zhengenv
 **/venv
+**/lib
 **/__pycache__
 DictionAssist/krenger/down/*
 **/.DS_Store

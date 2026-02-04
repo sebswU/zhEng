@@ -1,0 +1,225 @@
+{%extends "base.html"%}
+{%block content%}
+<h1 class="text-center text-white m-2 p-3">Welcome, {{user}}</h1>
+<div class="card position-absolute top-50 start-50 translate-middle bg-light">
+<div class="card-body text-center align-items-start">
+    <form enctype="multipart/form-data" action = "{%url 'voyager:home'%}" method="post">
+        {%csrf_token%}
+        <div class="mb-3">
+            <div class="mb-3 text-start">
+                <label for="id_text" class="form-label">Text input</label>
+                {{form.text}}
+            </div>
+            <div class="mb-3 text-start">
+                <label for="id_audio" class="btn btn-outline-secondary mb-2">Upload audio</label>
+                {{form.audio}}
+                <div id="audioFilename" class="small text-muted"></div>
+            </div>
+            <div class="mb-3">
+                <div class="d-flex gap-2 flex-wrap justify-content-center">
+                    <button type="button" id="record" class="btn btn-primary">Start recording</button>
+                    <button type="button" id="pause" class="btn btn-outline-primary" disabled>Pause</button>
+                    <button type="button" id="stop" class="btn btn-outline-danger" disabled>Stop</button>
+                    <button type="button" id="clear" class="btn btn-outline-secondary" disabled>Clear</button>
+                </div>
+                <div class="mt-3 d-flex flex-column align-items-center">
+                    <div id="recordStatus" class="small text-muted">Mic idle</div>
+                    <div id="recordTimer" class="small">00:00</div>
+                    <progress id="recordLevel" value="0" max="100" style="width: 220px;"></progress>
+                    <label class="small mt-2">
+                        <input type="checkbox" id="monitorToggle" /> Monitor mic
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="btn mb-3" required>Enter</button>
+        </div>
+        
+    </form>
+</div>
+<div class="card-body text-center align-items-start b-2">
+    <h4 class="text-center m2 p-3">Your Recording:</h4>
+    <audio id="download"></audio>
+    <audio id="monitor" autoplay muted style="display:none;"></audio>
+</div>
+</div>
+<script>
+    const recordButton = document.getElementById("record");
+    const pauseButton = document.getElementById("pause");
+    const stopButton = document.getElementById("stop");
+    const clearButton = document.getElementById("clear");
+    const audInp = document.getElementById("id_audio");
+    const down = document.getElementById("download");
+    const monitor = document.getElementById("monitor");
+    const monitorToggle = document.getElementById("monitorToggle");
+    const recordStatus = document.getElementById("recordStatus");
+    const recordTimer = document.getElementById("recordTimer");
+    const recordLevel = document.getElementById("recordLevel");
+    const audioFilename = document.getElementById("audioFilename");
+
+    audInp.style.display = "none";
+
+    let stream;
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioContext;
+    let analyser;
+    let meterAnimation;
+    let timerInterval;
+    let startTime = 0;
+
+    const setStatus = (text) => {
+        recordStatus.textContent = text;
+    };
+
+    const formatTime = (ms) => {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+        const seconds = String(totalSeconds % 60).padStart(2, "0");
+        return `${minutes}:${seconds}`;
+    };
+
+    const updateTimer = () => {
+        const elapsed = Date.now() - startTime;
+        recordTimer.textContent = formatTime(elapsed);
+    };
+
+    const updateMeter = () => {
+        if (!analyser) return;
+        const data = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (const v of data) {
+            const normalized = (v - 128) / 128;
+            sum += normalized * normalized;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        recordLevel.value = Math.min(100, Math.round(rms * 200));
+        meterAnimation = requestAnimationFrame(updateMeter);
+    };
+
+    const stopStream = () => {
+        if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+            stream = undefined;
+        }
+        if (audioContext) {
+            audioContext.close();
+            audioContext = undefined;
+        }
+        if (meterAnimation) {
+            cancelAnimationFrame(meterAnimation);
+            meterAnimation = undefined;
+        }
+    };
+
+    const updateButtons = (state) => {
+        const recording = state === "recording";
+        const paused = state === "paused";
+        recordButton.disabled = recording || paused;
+        pauseButton.disabled = !(recording || paused);
+        stopButton.disabled = !(recording || paused);
+        clearButton.disabled = !(audioChunks.length > 0 || down.src);
+        pauseButton.textContent = paused ? "Resume" : "Pause";
+    };
+
+    const setRecordedFile = (blob) => {
+        const file = new File([blob], `recording-${Date.now()}.webm`, { type: blob.type });
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        audInp.files = dataTransfer.files;
+        audioFilename.textContent = `Ready to submit: ${file.name}`;
+    };
+
+    const startRecording = async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            monitor.srcObject = stream;
+            monitor.muted = !monitorToggle.checked;
+            monitor.style.display = monitorToggle.checked ? "block" : "none";
+
+            mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+            audioChunks = [];
+
+            audioContext = new AudioContext();
+            const source = audioContext.createMediaStreamSource(stream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 512;
+            source.connect(analyser);
+            updateMeter();
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+                const link = URL.createObjectURL(blob);
+                down.src = link;
+                down.controls = true;
+                down.autoplay = true;
+                setRecordedFile(blob);
+                setStatus("Recording ready");
+                clearButton.disabled = false;
+                updateButtons("idle");
+                stopStream();
+            };
+
+            mediaRecorder.start(250);
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 250);
+            setStatus("Recording…");
+            updateButtons("recording");
+        } catch (err) {
+            setStatus("Mic permission denied or unavailable");
+            console.error(`audio error: ${err}`);
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+        }
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = undefined;
+        }
+        recordTimer.textContent = "00:00";
+        setStatus("Processing recording…");
+    };
+
+    const togglePause = () => {
+        if (!mediaRecorder) return;
+        if (mediaRecorder.state === "recording") {
+            mediaRecorder.pause();
+            setStatus("Paused");
+            updateButtons("paused");
+        } else if (mediaRecorder.state === "paused") {
+            mediaRecorder.resume();
+            setStatus("Recording…");
+            updateButtons("recording");
+        }
+    };
+
+    const clearRecording = () => {
+        audioChunks = [];
+        down.removeAttribute("src");
+        down.removeAttribute("controls");
+        audioFilename.textContent = "";
+        audInp.value = "";
+        setStatus("Mic idle");
+        updateButtons("idle");
+    };
+
+    recordButton.addEventListener("click", startRecording);
+    pauseButton.addEventListener("click", togglePause);
+    stopButton.addEventListener("click", stopRecording);
+    clearButton.addEventListener("click", clearRecording);
+
+    monitorToggle.addEventListener("change", () => {
+        monitor.muted = !monitorToggle.checked;
+        monitor.style.display = monitorToggle.checked ? "block" : "none";
+    });
+</script>
+{%endblock content%}
